@@ -6,7 +6,7 @@
 
 打开 [单据 OCR](https://lirunhualk.github.io/ocr/)，选择图片，再点击「开始识别」。可以自动判断方向，也可以手动指定顺时针旋转角度。
 
-GitHub Pages 版使用 PaddleOCR.js 在浏览器里运行。首次识别需要下载模型和运行库，耗时随网络和设备而变化。图片和识别结果只在当前浏览器处理。
+GitHub Pages 版使用 PaddleOCR.js 在浏览器里运行。首次识别时，浏览器优先从 PaddleOCR 官方地址下载模型并校验 SHA-256，遇到下载失败、超时或校验失败时自动使用本站副本。运行库由 jsDelivr 提供。图片和识别结果只在当前浏览器处理。
 
 ## 本地运行 Python 版
 

@@ -1,0 +1,6 @@
+The PP-OCRv6 tiny detection and recognition models are distributed under
+the Apache License, Version 2.0. See Apache-2.0.txt in this directory.
+
+Model sources:
+https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_onnx
+https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec_onnx

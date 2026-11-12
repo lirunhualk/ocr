@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f6f4">
+  <title>单据文字识别 · OCR 工作台</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-content">
+      <a class="brand" href="./" aria-label="OCR 工作台首页">
+        <span class="brand-mark" aria-hidden="true"><i></i></span>
+        <span>OCR 工作台</span>
+      </a>
+      <span class="local-label"><i aria-hidden="true"></i><span id="engine-label">本地识别</span></span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <header class="intro">
+      <h1>单据文字识别</h1>
+      <p>上传送货单、票据或其他单据照片，提取其中的中文、英文和数字。</p>
+    </header>
+
+    <div class="workspace">
+      <section class="panel" aria-labelledby="input-title">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="panel-icon image-icon" aria-hidden="true"></span>
+            <h2 id="input-title">单据图片</h2>
+          </div>
+          <button id="replace-image" class="button button-quiet" type="button" hidden>更换图片</button>
+        </div>
+        <div class="input-body">
+          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
+          <div id="drop-zone" class="drop-zone">
+            <div id="upload-prompt" class="upload-prompt">
+              <span class="upload-icon" aria-hidden="true"><i></i></span>
+              <h3>将图片拖到这里</h3>
+              <p>JPG、PNG 或 WebP，最大 15 MB</p>
+              <button id="choose-image" class="button button-outline" type="button">选择图片</button>
+            </div>
+            <div id="preview" class="preview" hidden>
+              <canvas id="preview-canvas" role="img" aria-label="单据预览"></canvas>
+            </div>
+          </div>
+          <div id="file-details" class="file-details" hidden>
+            <span id="file-name" class="file-name"></span>
+            <label id="show-boxes-label" class="box-toggle" hidden><input id="show-boxes" type="checkbox" checked> 显示识别框</label>
+          </div>
+          <p id="status" class="notice" aria-live="polite" aria-atomic="true"></p>
+          <div class="input-actions">
+            <label class="direction" for="rotation">
+              <span>图片方向</span>
+              <select id="rotation" disabled>
+                <option value="auto">自动校正</option>
+                <option value="0">保持原方向</option>
+                <option value="90">顺时针 90°</option>
+                <option value="180">顺时针 180°</option>
+                <option value="270">顺时针 270°</option>
+              </select>
+            </label>
+            <button id="recognize" class="button button-primary" type="button" disabled>
+              <span id="recognize-indicator" class="scan-icon" aria-hidden="true"></span>
+              <span id="recognize-label">开始识别</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel results" aria-labelledby="result-title">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="panel-icon text-icon" aria-hidden="true"></span>
+            <h2 id="result-title">识别结果</h2>
+          </div>
+          <button id="copy-result" class="button button-outline copy-button" type="button" disabled><span class="copy-icon" aria-hidden="true"></span><span id="copy-label">复制文字</span></button>
+        </div>
+        <div id="results-body" class="results-body" aria-busy="false">
+          <div class="result-tools">
+            <div class="view-selector" role="group" aria-label="结果视图">
+              <button id="text-view" type="button" aria-pressed="true" aria-controls="result-text" disabled>全文</button>
+              <button id="line-view" type="button" aria-pressed="false" aria-controls="result-lines" disabled>分块</button>
+            </div>
+            <span id="result-meta" class="result-meta" aria-live="polite"></span>
+          </div>
+          <div id="result-empty" class="result-empty">
+            <div id="document-icon" class="document-icon" aria-hidden="true"><i></i><i></i><i></i></div>
+            <h3 id="result-heading">等待识别</h3>
+            <p id="result-hint">上传图片后，点击「开始识别」。</p>
+          </div>
+          <pre id="result-text" class="result-text" tabindex="0" hidden></pre>
+          <ul id="result-lines" class="result-lines" hidden></ul>
+        </div>
+      </section>
+    </div>
+    <footer class="workspace-footer"><span class="lock-icon" aria-hidden="true"></span><span id="privacy-label">图片仅由本地 OCR 服务处理</span></footer>
+  </main>
+</body>
+</html>

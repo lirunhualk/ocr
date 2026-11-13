@@ -11,6 +11,7 @@ const fileDetails = document.querySelector("#file-details");
 const fileName = document.querySelector("#file-name");
 const showBoxes = document.querySelector("#show-boxes");
 const showBoxesLabel = document.querySelector("#show-boxes-label");
+const scenario = document.querySelector("#scenario");
 const rotation = document.querySelector("#rotation");
 const recognize = document.querySelector("#recognize");
 const recognizeLabel = document.querySelector("#recognize-label");
@@ -24,8 +25,15 @@ const documentIcon = document.querySelector("#document-icon");
 const resultMeta = document.querySelector("#result-meta");
 const resultText = document.querySelector("#result-text");
 const resultLines = document.querySelector("#result-lines");
+const resultPodv = document.querySelector("#result-podv");
 const textView = document.querySelector("#text-view");
 const lineView = document.querySelector("#line-view");
+const podvView = document.querySelector("#podv-view");
+const podvWarnings = document.querySelector("#podv-warnings");
+const podvFields = document.querySelector("#podv-fields");
+const podvItemNumbers = document.querySelector("#podv-item-numbers");
+const downloadPodv = document.querySelector("#download-podv");
+const podvExportNote = document.querySelector("#podv-export-note");
 const copyResult = document.querySelector("#copy-result");
 const copyLabel = document.querySelector("#copy-label");
 
@@ -35,11 +43,26 @@ const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maxBytes = 15 * 1024 * 1024;
 const decimal = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("zh-CN", { style: "percent" });
+const podvHeaders = [
+  "客户", "发货单号（U8系统）", "发货单时间(U8系统)", "客户送货单号", "实际送货日期",
+  "物料编码", "物料名称", "物料编码", "单位", "出库数量",
+  "客户格式出库单上载明的出库时间", "是否出库单完全无签收或盖章", "出库单上客户的签收时间（具体时间或没有的不填）",
+  "纸质是否有签收时间", "是否签字（选择是或者否）", "签字人姓名（据实填写姓名，不好辨认写“看不清”）",
+  "是否盖章", "盖章类型", "是否瑕疵（例如，是否声明仅验收数量）", "如有瑕疵，备注多余文字内容",
+];
+const podvLabels = {
+  D: "客户送货单号", E: "实际送货日期", K: "是否有出库时间", L: "是否无其他红章",
+  M: "客户签收时间", N: "签收时间或否", O: "是否签字", P: "签字人姓名辨识",
+  Q: "是否有其他红章", R: "其他红章类型", S: "是否瑕疵", T: "备注",
+};
+const yesNo = ["是", "否"];
+const podvChoices = { K: yesNo, O: yesNo, P: ["有", "无", "看不清"], Q: yesNo, S: yesNo };
 
 let currentFile = null;
 let currentImage = null;
 let currentImageUrl = null;
 let result = null;
+let podv = null;
 let busy = false;
 let decoding = false;
 let selectedBox = -1;
@@ -59,9 +82,11 @@ function setStatus(message, error = false) {
 function updateControls() {
   const unavailable = busy || decoding;
   recognize.disabled = unavailable || !currentFile;
+  scenario.disabled = unavailable;
   rotation.disabled = unavailable || !currentFile;
   chooseImage.disabled = unavailable;
   replaceImage.disabled = unavailable;
+  downloadPodv.disabled = unavailable || !podv?.fields.D?.trim() || !podvItemNumbers.validity.valid;
   resultsBody.setAttribute("aria-busy", String(busy));
   recognizeIndicator.className = busy ? "spinner" : "scan-icon";
   recognizeLabel.textContent = busy ? "识别中…" : result ? "重新识别" : "开始识别";
@@ -114,10 +139,118 @@ function drawPreview() {
 function setView(view) {
   currentView = view;
   const hasLines = Boolean(result?.lines.length);
+  podvView.setAttribute("aria-pressed", String(view === "podv"));
   textView.setAttribute("aria-pressed", String(view === "text"));
   lineView.setAttribute("aria-pressed", String(view === "lines"));
+  resultEmpty.hidden = hasLines || Boolean(podv);
   resultText.hidden = !hasLines || view !== "text";
   resultLines.hidden = !hasLines || view !== "lines";
+  resultPodv.hidden = !podv || view !== "podv";
+}
+
+function renderPodv() {
+  podvWarnings.replaceChildren();
+  podvFields.replaceChildren();
+  podvItemNumbers.setCustomValidity("");
+  if (!podv) return;
+  podvItemNumbers.value = (podv.itemNumbers ?? []).join("、");
+
+  for (const warning of podv.warnings) {
+    const item = document.createElement("li");
+    item.textContent = warning;
+    podvWarnings.append(item);
+  }
+  podvWarnings.hidden = podv.warnings.length === 0;
+
+  const inputs = {};
+  for (const [column, name] of Object.entries(podvLabels)) {
+    const row = document.createElement("tr");
+    const heading = document.createElement("th");
+    const label = document.createElement("label");
+    const letter = document.createElement("span");
+    const cell = document.createElement("td");
+    const choices = podvChoices[column];
+    const input = document.createElement(choices ? "select" : "input");
+    input.id = `podv-${column}`;
+    if (choices) {
+      input.append(new Option("待核对", ""), ...choices.map((value) => new Option(value, value)));
+    } else {
+      input.type = "text";
+      input.readOnly = column === "L" || column === "N";
+    }
+    input.value = podv.fields[column] ?? "";
+    heading.scope = "row";
+    label.htmlFor = input.id;
+    letter.className = "podv-column";
+    letter.textContent = column;
+    label.append(letter, name);
+    heading.append(label);
+    cell.append(input);
+    row.append(heading, cell);
+    podvFields.append(row);
+    inputs[column] = input;
+  }
+
+  const syncFields = () => {
+    const { fields } = podv;
+    fields.N = inputs.N.value = fields.M?.trim() || "否";
+    fields.L = inputs.L.value = { 是: "否", 否: "是" }[fields.Q] ?? "";
+    inputs.R.readOnly = fields.Q !== "是";
+    fields.R = inputs.R.value = fields.Q === "是" ? fields.R || "收获专用章" : "";
+    updatePodvExport();
+  };
+  for (const [column, input] of Object.entries(inputs)) {
+    input.addEventListener("input", () => {
+      podv.fields[column] = input.value;
+      if (column !== "R") syncFields();
+    });
+  }
+  inputs.R.addEventListener("change", syncFields);
+  syncFields();
+}
+
+function csvCell(value) {
+  const cell = value?.trim() ?? "";
+  const escaped = /^[=+\-@]/.test(cell) ? `'${cell}` : cell;
+  return `"${escaped.replaceAll('"', '""')}"`;
+}
+
+function exportItemNumbers() {
+  return /^\d{17}$/.test(podv.fields.D?.trim()) ? (podv.itemNumbers ?? []) : [];
+}
+
+function updatePodvExport() {
+  const items = podvItemNumbers.value.split(/[\s,，、;；]+/u).filter(Boolean);
+  const invalid = items.some((item) => !/^\d{1,5}$/u.test(item));
+  const message = invalid ? "物料行号请填写数字，可用顿号分隔。" : "";
+  podvItemNumbers.setCustomValidity(message);
+  podvItemNumbers.setAttribute("aria-invalid", String(invalid));
+  podv.itemNumbers = [...new Set(items)];
+  podvExportNote.textContent = message || (exportItemNumbers().length
+    ? "CSV 的 D 列按模板生成完整单号。"
+    : "如果 D 列仅有主单号，可与模板 D 列斜杠前的内容匹配。用 Excel 导入时将 D 列设为文本。");
+  updateControls();
+}
+
+function exportPodv() {
+  if (downloadPodv.disabled) return;
+
+  const { fields } = podv;
+  const itemNumbers = exportItemNumbers();
+  const mainId = fields.D.trim();
+  const keys = itemNumbers.length ? itemNumbers.map((number) => `${mainId}/${number}/Y`) : [mainId];
+  const rows = keys.map((key) => {
+    const row = { ...fields, D: key };
+    return podvHeaders.map((_, index) => row[String.fromCharCode(65 + index)]);
+  });
+  const csv = [podvHeaders, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob(["\uFEFF", csv, "\r\n"], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${currentFile.name.replace(/\.[^.]+$/, "")}_kxs_podv.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function renderResult(heading, hint) {
@@ -153,11 +286,13 @@ function renderResult(heading, hint) {
   copyResult.disabled = !result?.text;
   textView.disabled = count === 0;
   lineView.disabled = count === 0;
+  podvView.hidden = scenario.value !== "kxs_podv";
+  podvView.disabled = !podv;
   showBoxesLabel.hidden = count === 0;
-  resultEmpty.hidden = count > 0;
   resultHeading.textContent = heading;
   resultHint.textContent = hint;
   documentIcon.className = busy ? "spinner" : "document-icon";
+  renderPodv();
   setView(currentView);
   drawPreview();
 }
@@ -187,6 +322,7 @@ async function loadFile(file) {
     currentFile = file;
     currentImage = image;
     result = null;
+    podv = null;
     currentView = "text";
     rotation.value = "auto";
     showBoxes.checked = true;
@@ -222,17 +358,19 @@ async function recognizeOnServer(file, mode) {
   return payload;
 }
 
-async function getRecognition(file, mode) {
+async function getRecognition(file, mode, onProgress = setStatus) {
   if (!browserMode) return recognizeOnServer(file, mode);
 
   const { recognizeInBrowser } = await import("./browser-ocr.js");
-  return recognizeInBrowser(file, mode, (message) => setStatus(message));
+  return recognizeInBrowser(file, mode, onProgress);
 }
 
 async function requestRecognition() {
   if (!currentFile || busy || decoding) return;
 
   result = null;
+  podv = null;
+  if (currentView === "podv") currentView = "text";
   busy = true;
   updateControls();
   setStatus(browserMode ? "正在准备浏览器识别模型，请稍候。" : "正在处理图片，请稍候。");
@@ -248,7 +386,22 @@ async function requestRecognition() {
     }
     result = payload;
     const adjusted = rotation.value === "auto" && result.rotation !== 0;
-    setStatus(adjusted ? `已自动顺时针旋转 ${result.rotation}°。` : "");
+    const directionMessage = adjusted ? `已自动顺时针旋转 ${result.rotation}°。` : "";
+    setStatus(directionMessage);
+    if (scenario.value === "kxs_podv") {
+      try {
+        const { extractPodv } = await import("./kxs-podv.js");
+        podv = await extractPodv(payload, currentImage, (crop) => {
+          setStatus("正在复查签收区域…");
+          return getRecognition(crop, "0", null);
+        });
+        currentView = "podv";
+        setStatus(directionMessage);
+      } catch (error) {
+        console.error("POD field extraction failed", error);
+        setStatus("签收字段提取失败，已保留 OCR 文字。请重试。", true);
+      }
+    }
     renderResult("未识别到文字", "可以换一张清晰的图片，或调整图片方向后重试。");
   } catch (error) {
     result = null;
@@ -288,16 +441,29 @@ dropZone.addEventListener("drop", (event) => {
   }
   loadFile(event.dataTransfer.files[0]);
 });
-rotation.addEventListener("change", () => {
+function resetRecognition(hint) {
   result = null;
+  podv = null;
+  if (currentView === "podv") currentView = "text";
   setStatus("");
   updateControls();
-  renderResult("等待识别", "点击「开始识别」，按当前方向设置重新识别。");
+  renderResult("等待识别", hint);
+}
+
+scenario.addEventListener("change", () => {
+  currentView = "text";
+  resetRecognition(currentFile ? "点击「开始识别」，按当前场景识别。" : "上传图片后，点击「开始识别」。");
+});
+rotation.addEventListener("change", () => {
+  resetRecognition("点击「开始识别」，按当前方向设置重新识别。");
 });
 showBoxes.addEventListener("change", drawPreview);
 recognize.addEventListener("click", requestRecognition);
 textView.addEventListener("click", () => setView("text"));
 lineView.addEventListener("click", () => setView("lines"));
+podvItemNumbers.addEventListener("input", updatePodvExport);
+podvView.addEventListener("click", () => setView("podv"));
+downloadPodv.addEventListener("click", exportPodv);
 copyResult.addEventListener("click", async () => {
   if (!result?.text) return;
   const currentResult = result;

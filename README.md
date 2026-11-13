@@ -20,6 +20,12 @@ python -m venv .venv
 
 打开 [本地识别页面](http://127.0.0.1:8000/)。Python 版由 Flask 提供页面和接口，使用 RapidOCR 和 ONNX Runtime 在本机 CPU 上识别，应用不会将单据写入项目目录。
 
+## 签收单检查
+
+页面默认选择「通用」。处理凯鑫森送货单时，选择「kxs_podv」，上传一张图片并点击「开始识别」。在「签收检查」中核对 D、E 和 K 至 T 列，可以直接修改字段并下载该图片的 CSV。浅色手写日期、签字和章型以原图复核为准。
+
+CSV 列位置与《签收单检查》一致。可在下载前校对物料行号，D 列会据此输出 `主单号/行号/Y`。只识别到主单号时，按 D 列 `/` 前的主单号匹配。用 Excel 导入时可将 D 列设为文本，以保留 17 位主单号。
+
 ## Python API
 
 `POST /api/ocr` 接收 `multipart/form-data`。使用 `file` 上传一张图片，用可选的 `rotation` 选择 `auto`（默认）或顺时针 `0`、`90`、`180`、`270` 度。成功响应包括 `text`、`lines`、`width`、`height`、`rotation` 和 `elapsed_ms`。每个文字块包含 `text`、`confidence` 和 `box`，坐标以方向校正后的图片为准。

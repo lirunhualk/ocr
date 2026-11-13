@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f3f6f4">
   <title>单据文字识别 · OCR 工作台</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script src="./app.js" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=kxs_podv">
+  <script src="./app.js?v=kxs_podv" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -35,6 +35,13 @@
           <button id="replace-image" class="button button-quiet" type="button" hidden>更换图片</button>
         </div>
         <div class="input-body">
+          <label class="scenario" for="scenario">
+            <span>识别场景</span>
+            <select id="scenario">
+              <option value="general">通用</option>
+              <option value="kxs_podv">kxs_podv</option>
+            </select>
+          </label>
           <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
           <div id="drop-zone" class="drop-zone">
             <div id="upload-prompt" class="upload-prompt">
@@ -82,6 +89,7 @@
         <div id="results-body" class="results-body" aria-busy="false">
           <div class="result-tools">
             <div class="view-selector" role="group" aria-label="结果视图">
+              <button id="podv-view" type="button" aria-pressed="false" aria-controls="result-podv" hidden disabled>签收检查</button>
               <button id="text-view" type="button" aria-pressed="true" aria-controls="result-text" disabled>全文</button>
               <button id="line-view" type="button" aria-pressed="false" aria-controls="result-lines" disabled>分块</button>
             </div>
@@ -94,6 +102,20 @@
           </div>
           <pre id="result-text" class="result-text" tabindex="0" hidden></pre>
           <ul id="result-lines" class="result-lines" hidden></ul>
+          <div id="result-podv" class="result-podv" hidden>
+            <ul id="podv-warnings" class="podv-warnings" aria-label="待复核项" hidden></ul>
+            <table class="podv-table" aria-label="签收单检查字段">
+              <tbody id="podv-fields"></tbody>
+            </table>
+            <label class="podv-items" for="podv-item-numbers">
+              <span>物料行号</span>
+              <input id="podv-item-numbers" type="text" placeholder="例如 10、20、30" aria-describedby="podv-export-note">
+            </label>
+            <div class="podv-export">
+              <button id="download-podv" class="button button-primary" type="button" aria-describedby="podv-export-note" disabled>下载本图 CSV</button>
+              <p id="podv-export-note">先核对送货单号。用 Excel 导入 CSV 时，将 D 列设为文本以保留完整单号。</p>
+            </div>
+          </div>
         </div>
       </section>
     </div>

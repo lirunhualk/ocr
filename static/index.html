@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f3f6f4">
   <title>单据文字识别 · OCR 工作台</title>
-  <link rel="stylesheet" href="./styles.css?v=kxs_podv">
-  <script src="./app.js?v=kxs_podv" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=kxs_podv_batch">
+  <script src="./app.js?v=kxs_podv_batch" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -42,12 +42,20 @@
               <option value="kxs_podv" selected>kxs_podv</option>
             </select>
           </label>
-          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
+          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+          <div id="batch-controls" class="batch-controls" hidden>
+            <label for="batch-image">
+              <span>当前图片</span>
+              <select id="batch-image"></select>
+            </label>
+            <button id="remove-image" class="button button-outline" type="button">移除当前图片</button>
+          </div>
+          <p id="batch-summary" class="notice" role="status" aria-atomic="true"></p>
           <div id="drop-zone" class="drop-zone">
             <div id="upload-prompt" class="upload-prompt">
               <span class="upload-icon" aria-hidden="true"><i></i></span>
               <h3>将图片拖到这里</h3>
-              <p>JPG、PNG 或 WebP，最大 15 MB</p>
+              <p id="upload-hint">JPG、PNG 或 WebP，可多选，每张最大 15 MB</p>
               <button id="choose-image" class="button button-outline" type="button">选择图片</button>
             </div>
             <div id="preview" class="preview" hidden>
@@ -79,12 +87,15 @@
       </section>
 
       <section class="panel results" aria-labelledby="result-title">
-        <div class="panel-header">
+        <div class="panel-header results-header">
           <div class="panel-title">
             <span class="panel-icon text-icon" aria-hidden="true"></span>
             <h2 id="result-title">识别结果</h2>
           </div>
-          <button id="copy-result" class="button button-outline copy-button" type="button" disabled><span class="copy-icon" aria-hidden="true"></span><span id="copy-label">复制文字</span></button>
+          <div class="result-actions">
+            <button id="copy-result" class="button button-outline copy-button" type="button" disabled><span class="copy-icon" aria-hidden="true"></span><span id="copy-label">复制文字</span></button>
+            <button id="download-batch" class="button button-outline" type="button" hidden disabled>下载合并 CSV</button>
+          </div>
         </div>
         <div id="results-body" class="results-body" aria-busy="false">
           <div class="result-tools">

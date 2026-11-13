@@ -75,17 +75,24 @@ button:disabled { cursor: default; }
 .notice { margin: 13px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .notice:empty { display: none; }
 .notice.is-error { color: #9e2823; }
+.batch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.batch-controls label { display: flex; flex: 1 1 190px; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
+.batch-controls span { flex-shrink: 0; }
+#batch-summary { margin: 0 0 14px; overflow-wrap: anywhere; }
 .input-actions { margin-top: auto; padding-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .direction, .scenario { min-width: 0; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .scenario { align-self: flex-start; margin-bottom: 14px; }
-.direction select, .scenario select { min-height: 40px; min-width: 0; padding: 6px 8px; border: 1px solid #cad9d1; border-radius: 8px; color: var(--ink); background: var(--surface); }
-.direction select:disabled, .scenario select:disabled { background: #f7f9f8; color: #66786f; }
+.direction select, .scenario select, .batch-controls select { min-height: 40px; min-width: 0; padding: 6px 8px; border: 1px solid #cad9d1; border-radius: 8px; color: var(--ink); background: var(--surface); }
+.batch-controls select { width: 100%; text-overflow: ellipsis; }
+.direction select:disabled, .scenario select:disabled, .batch-controls select:disabled { background: #f7f9f8; color: #66786f; }
 
 .copy-icon { position: relative; width: 13px; height: 15px; }
 .copy-icon::before, .copy-icon::after { content: ""; position: absolute; width: 9px; height: 11px; border: 1.3px solid currentColor; border-radius: 2px; }
 .copy-icon::before { left: 0; top: 0; }
 .copy-icon::after { right: 0; bottom: 0; background: var(--surface); }
 .copy-button:disabled .copy-icon::after { background: #f7f9f8; }
+.results-header { flex-wrap: wrap; }
+.result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .results-body { padding: 20px 22px 22px; display: flex; flex: 1; flex-direction: column; }
 .result-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .view-selector { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #e7ede9; background: #f1f5f2; border-radius: 9px; }

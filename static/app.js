@@ -5,6 +5,11 @@ const chooseImage = document.querySelector("#choose-image");
 const replaceImage = document.querySelector("#replace-image");
 const dropZone = document.querySelector("#drop-zone");
 const uploadPrompt = document.querySelector("#upload-prompt");
+const uploadHint = document.querySelector("#upload-hint");
+const batchControls = document.querySelector("#batch-controls");
+const batchImage = document.querySelector("#batch-image");
+const batchSummary = document.querySelector("#batch-summary");
+const removeImage = document.querySelector("#remove-image");
 const preview = document.querySelector("#preview");
 const canvas = document.querySelector("#preview-canvas");
 const fileDetails = document.querySelector("#file-details");
@@ -33,6 +38,7 @@ const podvWarnings = document.querySelector("#podv-warnings");
 const podvFields = document.querySelector("#podv-fields");
 const podvItemNumbers = document.querySelector("#podv-item-numbers");
 const downloadPodv = document.querySelector("#download-podv");
+const downloadBatch = document.querySelector("#download-batch");
 const podvExportNote = document.querySelector("#podv-export-note");
 const copyResult = document.querySelector("#copy-result");
 const copyLabel = document.querySelector("#copy-label");
@@ -58,7 +64,9 @@ const podvLabels = {
 const yesNo = ["是", "否"];
 const podvChoices = { K: yesNo, O: yesNo, P: ["有", "无", "看不清"], Q: yesNo, S: yesNo };
 
-let currentFile = null;
+const queues = { general: [], kxs_podv: [] };
+let entries = queues[scenario.value];
+let currentEntry = null;
 let currentImage = null;
 let currentImageUrl = null;
 let result = null;
@@ -81,15 +89,35 @@ function setStatus(message, error = false) {
 
 function updateControls() {
   const unavailable = busy || decoding;
-  recognize.disabled = unavailable || !currentFile;
+  const batch = scenario.value === "kxs_podv" && entries.length > 1;
+  const needsRecognition = entries.some(needsOcr);
+  recognize.disabled = unavailable || !currentEntry;
   scenario.disabled = unavailable;
-  rotation.disabled = unavailable || !currentFile;
+  rotation.disabled = unavailable || !currentEntry;
   chooseImage.disabled = unavailable;
   replaceImage.disabled = unavailable;
-  downloadPodv.disabled = unavailable || !podv?.fields.D?.trim() || !podvItemNumbers.validity.valid;
+  batchImage.disabled = unavailable;
+  removeImage.disabled = unavailable;
+  resultPodv.inert = unavailable;
+  downloadPodv.disabled = unavailable || !canExport(currentEntry);
+  downloadBatch.hidden = !batch;
+  const ready = batch ? entries.filter(canExport).length : 0;
+  downloadBatch.disabled = unavailable || ready !== entries.length;
+  if (!batch) {
+    batchSummary.textContent = "";
+  } else if (ready < entries.length) {
+    batchSummary.textContent = `${ready}/${entries.length} 张可导出。请识别或核对其余图片。`;
+  } else {
+    const keys = entries.flatMap(({ podv }) => exportKeys(podv));
+    const duplicates = keys.length - new Set(keys).size;
+    batchSummary.textContent = duplicates
+      ? `${entries.length} 张可导出，共有 ${duplicates} 条重复 D 列单号。`
+      : `${entries.length} 张可导出，共 ${keys.length} 条明细。`;
+  }
   resultsBody.setAttribute("aria-busy", String(busy));
   recognizeIndicator.className = busy ? "spinner" : "scan-icon";
-  recognizeLabel.textContent = busy ? "识别中…" : result ? "重新识别" : "开始识别";
+  recognizeLabel.textContent = busy ? "识别中…" : batch && needsRecognition ? "批量识别"
+    : currentEntry && !needsOcr(currentEntry) ? (batch ? "重新识别当前图" : "重新识别") : "开始识别";
 }
 
 function drawPreview() {
@@ -215,8 +243,8 @@ function csvCell(value) {
   return `"${escaped.replaceAll('"', '""')}"`;
 }
 
-function exportItemNumbers() {
-  return /^\d{17}$/.test(podv.fields.D?.trim()) ? (podv.itemNumbers ?? []) : [];
+function exportItemNumbers(check) {
+  return /^\d{17}$/.test(check.fields.D?.trim()) ? (check.itemNumbers ?? []) : [];
 }
 
 function updatePodvExport() {
@@ -226,29 +254,36 @@ function updatePodvExport() {
   podvItemNumbers.setCustomValidity(message);
   podvItemNumbers.setAttribute("aria-invalid", String(invalid));
   podv.itemNumbers = [...new Set(items)];
-  podvExportNote.textContent = message || (exportItemNumbers().length
+  podvExportNote.textContent = message || (exportItemNumbers(podv).length
     ? "CSV 的 D 列按模板生成完整单号。"
     : "如果 D 列仅有主单号，可与模板 D 列斜杠前的内容匹配。用 Excel 导入时将 D 列设为文本。");
+  const option = batchImage.selectedOptions[0];
+  if (option) option.textContent = queueLabel(currentEntry, entries.indexOf(currentEntry));
   updateControls();
 }
 
-function exportPodv() {
-  if (downloadPodv.disabled) return;
+function canExport(entry) {
+  return Boolean(entry?.podv?.fields.D?.trim()
+    && (entry.podv.itemNumbers ?? []).every((item) => /^\d{1,5}$/u.test(item)));
+}
 
-  const { fields } = podv;
-  const itemNumbers = exportItemNumbers();
-  const mainId = fields.D.trim();
-  const keys = itemNumbers.length ? itemNumbers.map((number) => `${mainId}/${number}/Y`) : [mainId];
-  const rows = keys.map((key) => {
-    const row = { ...fields, D: key };
+function exportKeys(check) {
+  const itemNumbers = exportItemNumbers(check);
+  const mainId = check.fields.D.trim();
+  return itemNumbers.length ? itemNumbers.map((number) => `${mainId}/${number}/Y`) : [mainId];
+}
+
+function downloadChecks(exportEntries, filename) {
+  const rows = exportEntries.flatMap(({ podv: check }) => exportKeys(check).map((key) => {
+    const row = { ...check.fields, D: key };
     return podvHeaders.map((_, index) => row[String.fromCharCode(65 + index)]);
-  });
+  }));
   const csv = [podvHeaders, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
   const blob = new Blob(["\uFEFF", csv, "\r\n"], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${currentFile.name.replace(/\.[^.]+$/, "")}_kxs_podv.csv`;
+  link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -297,52 +332,130 @@ function renderResult(heading, hint) {
   drawPreview();
 }
 
-async function loadFile(file) {
-  if (!file || busy || decoding) return;
-
+function fileError(file) {
   if (!supportedTypes.has(file.type) && (file.type || !/\.(jpe?g|png|webp)$/i.test(file.name))) {
-    setStatus("请选择 JPG、PNG 或 WebP 图片。", true);
-    return;
+    return "请选择 JPG、PNG 或 WebP 图片。";
   }
-  if (file.size > maxBytes || file.size === 0) {
-    setStatus(file.size === 0 ? "图片文件为空。" : "图片超过 15 MB，请压缩后再上传。", true);
-    return;
-  }
+  if (file.size === 0) return "图片文件为空。";
+  if (file.size > maxBytes) return "图片超过 15 MB，请压缩后再上传。";
+  return "";
+}
 
-  decoding = true;
-  updateControls();
-  setStatus("正在读取图片…");
+function makeEntry(file) {
+  return { file, rotation: "auto", result: null, podv: null, error: "" };
+}
+
+async function decodeFile(file) {
   const url = URL.createObjectURL(file);
   const image = new Image();
   image.src = url;
   try {
     await image.decode();
-    if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
-    currentImageUrl = url;
-    currentFile = file;
-    currentImage = image;
-    result = null;
-    podv = null;
-    currentView = "text";
-    rotation.value = "auto";
-    showBoxes.checked = true;
-    fileName.textContent = file.name;
-    fileName.title = file.name;
-    uploadPrompt.hidden = true;
-    preview.hidden = false;
-    fileDetails.hidden = false;
-    replaceImage.hidden = false;
-    dropZone.classList.add("has-image");
-    setStatus("");
-    renderResult("等待识别", "点击「开始识别」提取图片中的文字。");
+    return { url, image };
   } catch {
-    if (currentImageUrl !== url) URL.revokeObjectURL(url);
-    setStatus("无法打开这张图片，请换一张重试。", true);
+    URL.revokeObjectURL(url);
+    throw new Error("无法打开这张图片，请换一张重试。");
+  }
+}
+
+function renderQueue() {
+  const isPodv = scenario.value === "kxs_podv";
+  fileInput.multiple = isPodv;
+  uploadHint.textContent = isPodv ? "可多选 JPG、PNG 或 WebP，每张最大 15 MB" : "JPG、PNG 或 WebP，最大 15 MB";
+  replaceImage.textContent = isPodv ? "添加图片" : "更换图片";
+  replaceImage.hidden = !currentEntry;
+  batchControls.hidden = !isPodv || !currentEntry;
+  batchImage.replaceChildren(...entries.map((entry, index) => new Option(queueLabel(entry, index), String(index))));
+  batchImage.value = String(entries.indexOf(currentEntry));
+}
+
+function queueLabel(entry, index) {
+  const state = entry.error && !entry.podv ? "识别失败" : canExport(entry) ? "可导出" : entry.podv ? "待核对" : "待识别";
+  return `${index + 1}. ${entry.file.name} · ${state}`;
+}
+
+function renderCurrent() {
+  result = currentEntry?.result ?? null;
+  podv = currentEntry?.podv ?? null;
+  currentView = podv ? "podv" : "text";
+  rotation.value = currentEntry?.rotation ?? "auto";
+  fileName.textContent = fileName.title = currentEntry?.file.name ?? "";
+  uploadPrompt.hidden = Boolean(currentEntry);
+  preview.hidden = !currentImage;
+  fileDetails.hidden = !currentEntry;
+  dropZone.classList.toggle("has-image", Boolean(currentEntry));
+  const direction = rotation.value === "auto" && result?.rotation ? `已自动顺时针旋转 ${result.rotation}°。` : "";
+  setStatus(currentEntry?.error || direction, Boolean(currentEntry?.error));
+  renderQueue();
+  renderResult(currentEntry?.error ? "识别未完成" : result ? "未识别到文字" : "等待识别",
+    currentEntry?.error ? "请检查图片后重试。" : result ? "可以换一张清晰的图片，或调整图片方向后重试。"
+      : "上传图片后，点击「开始识别」。");
+  updateControls();
+}
+
+async function selectEntry(entry, decoded = null) {
+  if (entry === currentEntry && !decoded) {
+    renderCurrent();
+    return;
+  }
+  decoding = true;
+  updateControls();
+  setStatus("正在读取图片…");
+  if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
+  currentEntry = entry;
+  currentImageUrl = currentImage = null;
+  try {
+    if (entry) ({ url: currentImageUrl, image: currentImage } = decoded ?? await decodeFile(entry.file));
+  } catch (error) {
+    entry.error = error.message;
   } finally {
     decoding = false;
-    updateControls();
-    if (currentImageUrl === url) recognize.focus();
+    renderCurrent();
   }
+}
+
+async function loadFiles(files) {
+  if (!files.length || busy || decoding) return;
+  const isPodv = scenario.value === "kxs_podv";
+  if (!isPodv && files.length > 1) {
+    setStatus("通用场景请一次上传一张图片。", true);
+    return;
+  }
+  const valid = [];
+  const invalid = [];
+  for (const file of files) {
+    const error = fileError(file);
+    if (error) invalid.push(`${file.name}：${error}`);
+    else valid.push(makeEntry(file));
+  }
+  if (valid.length) {
+    if (!isPodv) {
+      decoding = true;
+      updateControls();
+      let decoded;
+      try {
+        decoded = await decodeFile(valid[0].file);
+      } catch (error) {
+        setStatus(error.message, true);
+        return;
+      } finally {
+        decoding = false;
+        updateControls();
+      }
+      entries[0] = valid[0];
+      await selectEntry(valid[0], decoded);
+    } else {
+      entries.push(...valid);
+      if (currentEntry) {
+        renderQueue();
+        updateControls();
+      } else {
+        await selectEntry(valid[0]);
+      }
+    }
+    if (currentImage) recognize.focus();
+  }
+  if (invalid.length) setStatus(invalid.join(" "), true);
 }
 
 async function recognizeOnServer(file, mode) {
@@ -365,60 +478,73 @@ async function getRecognition(file, mode, onProgress = setStatus) {
   return recognizeInBrowser(file, mode, onProgress);
 }
 
-async function requestRecognition() {
-  if (!currentFile || busy || decoding) return;
+function needsOcr(entry) {
+  return scenario.value === "kxs_podv" ? !entry.podv : !entry.result;
+}
 
-  result = null;
-  podv = null;
-  if (currentView === "podv") currentView = "text";
-  busy = true;
-  updateControls();
-  setStatus(browserMode ? "正在准备浏览器识别模型，请稍候。" : "正在处理图片，请稍候。");
-  renderResult("正在识别", browserMode
-    ? "首次识别需要下载模型，请稍候。"
-    : "识别完成后，文字会显示在这里。");
-
+async function recognizeEntry(entry, isPodv, onProgress) {
+  let decoded;
+  entry.error = "";
   try {
-    const payload = await getRecognition(currentFile, rotation.value);
+    if (entry !== currentEntry || !currentImage) decoded = await decodeFile(entry.file);
+    const payload = await getRecognition(entry.file, entry.rotation, onProgress);
     if (!Array.isArray(payload?.lines) || typeof payload.text !== "string"
       || !(payload.width > 0 && payload.height > 0)) {
       throw new Error("识别结果格式异常，请重试。");
     }
-    result = payload;
-    const adjusted = rotation.value === "auto" && result.rotation !== 0;
-    const directionMessage = adjusted ? `已自动顺时针旋转 ${result.rotation}°。` : "";
-    setStatus(directionMessage);
-    if (scenario.value === "kxs_podv") {
+    if (isPodv) {
       try {
         const { extractPodv } = await import("./kxs-podv.js");
-        podv = await extractPodv(payload, currentImage, (crop) => {
-          setStatus("正在复查签收区域…");
+        entry.podv = await extractPodv(payload, decoded?.image ?? currentImage, (crop) => {
+          onProgress("正在复查签收区域…");
           return getRecognition(crop, "0", null);
         });
-        currentView = "podv";
-        setStatus(directionMessage);
       } catch (error) {
         console.error("POD field extraction failed", error);
-        setStatus("签收字段提取失败，已保留 OCR 文字。请重试。", true);
+        entry.error = "签收字段提取失败，已保留 OCR 文字。请重试。";
       }
     }
-    renderResult("未识别到文字", "可以换一张清晰的图片，或调整图片方向后重试。");
+    if (!entry.error || !entry.podv) entry.result = payload;
   } catch (error) {
-    result = null;
     const failure = browserMode ? "浏览器识别暂时不可用，请检查网络后重试。" : "无法连接识别服务，请检查服务是否已启动。";
-    setStatus(error instanceof TypeError ? failure : error.message, true);
-    renderResult("识别未完成", "请检查图片后重试。");
+    entry.error = error instanceof TypeError ? failure : error.message;
+  } finally {
+    if (entry.error && entry.podv) entry.error += "已保留上次签收检查结果。";
+    if (decoded) URL.revokeObjectURL(decoded.url);
+  }
+}
+
+async function requestRecognition() {
+  if (!currentEntry || busy || decoding) return;
+
+  const isPodv = scenario.value === "kxs_podv";
+  const pending = entries.filter(needsOcr);
+  const targets = isPodv && pending.length ? pending : [currentEntry];
+  const keepView = !isPodv && currentView === "lines";
+  busy = true;
+  result = podv = null;
+  currentView = "text";
+  updateControls();
+  renderResult("正在识别", browserMode ? "首次识别需要下载模型，请稍候。" : "识别完成后，文字会显示在这里。");
+
+  try {
+    for (const [index, entry] of targets.entries()) {
+      const prefix = targets.length > 1 ? `${index + 1}/${targets.length} ${entry.file.name}：` : "";
+      const onProgress = (message) => setStatus(prefix + message);
+      onProgress("正在处理图片，请稍候。");
+      await recognizeEntry(entry, isPodv, onProgress);
+    }
   } finally {
     busy = false;
-    updateControls();
-    documentIcon.className = "document-icon";
+    renderCurrent();
+    if (keepView && result?.lines.length) setView("lines");
   }
 }
 
 chooseImage.addEventListener("click", () => fileInput.click());
 replaceImage.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
-  loadFile(fileInput.files[0]);
+  loadFiles(Array.from(fileInput.files));
   fileInput.value = "";
 });
 dropZone.addEventListener("dragover", (event) => {
@@ -434,28 +560,31 @@ dropZone.addEventListener("dragleave", (event) => {
 dropZone.addEventListener("drop", (event) => {
   event.preventDefault();
   dropZone.classList.remove("is-dragging");
-  if (busy || decoding) return;
-  if (event.dataTransfer.files.length > 1) {
-    setStatus("请一次上传一张图片。", true);
-    return;
-  }
-  loadFile(event.dataTransfer.files[0]);
+  loadFiles(Array.from(event.dataTransfer.files));
 });
-function resetRecognition(hint) {
-  result = null;
-  podv = null;
-  if (currentView === "podv") currentView = "text";
-  setStatus("");
-  updateControls();
-  renderResult("等待识别", hint);
-}
 
 scenario.addEventListener("change", () => {
-  currentView = "text";
-  resetRecognition(currentFile ? "点击「开始识别」，按当前场景识别。" : "上传图片后，点击「开始识别」。");
+  const file = currentEntry?.file;
+  entries = queues[scenario.value];
+  if (!entries.length && file) entries.push(makeEntry(file));
+  selectEntry(entries[0] ?? null);
 });
 rotation.addEventListener("change", () => {
-  resetRecognition("点击「开始识别」，按当前方向设置重新识别。");
+  if (!currentEntry) return;
+  currentEntry.rotation = rotation.value;
+  currentEntry.result = currentEntry.podv = null;
+  currentEntry.error = "";
+  renderCurrent();
+});
+batchImage.addEventListener("change", () => {
+  if (busy || decoding) return;
+  selectEntry(entries[Number(batchImage.value)]);
+});
+removeImage.addEventListener("click", () => {
+  if (!currentEntry || busy || decoding) return;
+  const index = entries.indexOf(currentEntry);
+  entries.splice(index, 1);
+  selectEntry(entries[Math.min(index, entries.length - 1)] ?? null);
 });
 showBoxes.addEventListener("change", drawPreview);
 recognize.addEventListener("click", requestRecognition);
@@ -463,7 +592,14 @@ textView.addEventListener("click", () => setView("text"));
 lineView.addEventListener("click", () => setView("lines"));
 podvItemNumbers.addEventListener("input", updatePodvExport);
 podvView.addEventListener("click", () => setView("podv"));
-downloadPodv.addEventListener("click", exportPodv);
+downloadPodv.addEventListener("click", () => {
+  if (downloadPodv.disabled) return;
+  downloadChecks([currentEntry], `${currentEntry.file.name.replace(/\.[^.]+$/, "")}_kxs_podv.csv`);
+});
+downloadBatch.addEventListener("click", () => {
+  if (downloadBatch.disabled) return;
+  downloadChecks(entries, "签收单检查_kxs_podv.csv");
+});
 copyResult.addEventListener("click", async () => {
   if (!result?.text) return;
   const currentResult = result;
@@ -485,3 +621,5 @@ copyResult.addEventListener("click", async () => {
     setStatus("已选中全文，可使用系统复制快捷键。");
   }
 });
+renderQueue();
+updateControls();
